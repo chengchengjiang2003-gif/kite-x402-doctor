@@ -1,0 +1,19 @@
+{
+  "name": "kite-x402-doctor",
+  "version": "0.1.0",
+  "description": "Read-only Kite RPC and x402 challenge diagnostics",
+  "type": "module",
+  "license": "MIT",
+  "author": "chengchengjiang2003-gif",
+  "engines": { "node": ">=22" },
+  "bin": { "kite-x402-doctor": "dist/cli.js" },
+  "exports": { ".": { "types": "./dist/doctor.d.ts", "import": "./dist/doctor.js" } },
+  "files": ["dist", "docs", "examples", "README.md", "CONTRIBUTING.md", "CHANGELOG.md", "LICENSE", ".env.example"],
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "check": "npm test",
+    "prepack": "npm run build"
+  },
+  "devDependencies": { "@types/node": "22.19.1", "typescript": "5.9.3" }
+}
