@@ -173,3 +173,22 @@ test('CLI help needs no endpoint', async () => {
   assert.equal(result.code, 0);
   assert.match(result.stdout, /Usage:/);
 });
+
+for (const [path, id] of [['/rpc', 'rpc.chain'], ['/paid', 'http.status']]) {
+  test(`report exposes a stable timeout code for ${id}`, async () => {
+    await fixture(async options => {
+      const report = await diagnose({ ...options, timeoutMs: 300 });
+      assert.deepEqual(report.checks.filter(check => check.code).map(check => [check.id, check.status, check.code]),
+        [[id, 'fail', 'request_timeout']]);
+      assert.match(formatReport(report), /request timed out\./);
+    }, { hang: path });
+  });
+}
+
+test('a non-402 endpoint response has no timeout code', async () => {
+  await fixture(async options => {
+    const report = await diagnose(options);
+    assert.equal(report.checks.find(check => check.id === 'http.status')?.status, 'fail');
+    assert.ok(report.checks.every(check => !Object.hasOwn(check, 'code')));
+  }, { status: 200 });
+});

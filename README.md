@@ -24,6 +24,8 @@ Replace the placeholder with a GET endpoint you operate or are authorized to ins
 
 Each run makes one `eth_chainId` JSON-RPC request and one unpaid GET. It follows no redirects and performs no retries. Each request has an eight-second timeout. RPC JSON is limited to 64 KiB; the encoded challenge header is limited to 16 KiB, subject to the HTTP client's own header limit. The paid endpoint's response body is discarded.
 
+In JSON output, a timed-out check has `code: "request_timeout"`. Its `id` identifies whether the RPC request (`rpc.chain`) or the endpoint request (`http.status`) timed out. Other checks omit `code`.
+
 Exit codes: **0** means the listed checks passed, **1** means a diagnostic failed, and **2** means invalid command arguments. A passed check does not verify recipient ownership, balances, token contract behavior, EIP-712 signing, or settlement. Other payment schemes and x402 v1 are outside v0.1.
 
 ## Reproducible local demonstration

@@ -7,7 +7,7 @@ export const NETWORKS = Object.freeze({
     rpc: 'https://rpc.gokite.ai', asset: '0x7aB6f3ed87C42eF0aDb67Ed95090f8bF5240149e' }),
 });
 
-export interface Check { id: string; status: 'pass' | 'fail'; detail: string }
+export interface Check { id: string; status: 'pass' | 'fail'; detail: string; code?: 'request_timeout' }
 export interface Report {
   schemaVersion: 1;
   checkedAt: string;
@@ -112,9 +112,10 @@ export async function diagnose(options: Options): Promise<Report> {
   const timeout = options.timeoutMs ?? 8000;
   if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > 60000) throw new Error('Invalid timeout.');
   const checks: Check[] = [];
+  const rpcTimeout = AbortSignal.timeout(timeout);
   try {
     const response = await fetch(rpc, {
-      method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(timeout),
+      method: 'POST', redirect: 'manual', signal: rpcTimeout,
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_chainId', params: [] }),
     });
@@ -125,12 +126,15 @@ export async function diagnose(options: Options): Promise<Report> {
     checks.push({ id: 'rpc.chain', status: correct ? 'pass' : 'fail',
       detail: `Expected JSON-RPC eth_chainId ${config.chainId} with matching response id.` });
   } catch {
-    checks.push({ id: 'rpc.chain', status: 'fail', detail: 'RPC unavailable, timed out, or returned invalid/oversized JSON.' });
+    checks.push(rpcTimeout.aborted
+      ? { id: 'rpc.chain', status: 'fail', detail: 'RPC request timed out.', code: 'request_timeout' }
+      : { id: 'rpc.chain', status: 'fail', detail: 'RPC unavailable or returned invalid/oversized JSON.' });
   }
+  const httpTimeout = AbortSignal.timeout(timeout);
   try {
     const response = await fetch(url, {
       method: 'GET', headers: { Accept: 'application/json' },
-      redirect: 'manual', signal: AbortSignal.timeout(timeout),
+      redirect: 'manual', signal: httpTimeout,
     });
     try {
       checks.push({ id: 'http.status', status: response.status === 402 ? 'pass' : 'fail',
@@ -138,7 +142,9 @@ export async function diagnose(options: Options): Promise<Report> {
       if (response.status === 402) checks.push(...inspectChallenge(response.headers.get('payment-required'), options.network));
     } finally { await response.body?.cancel().catch(() => {}); }
   } catch {
-    checks.push({ id: 'http.status', status: 'fail', detail: 'Endpoint unavailable, timed out, or returned an invalid response.' });
+    checks.push(httpTimeout.aborted
+      ? { id: 'http.status', status: 'fail', detail: 'Endpoint request timed out.', code: 'request_timeout' }
+      : { id: 'http.status', status: 'fail', detail: 'Endpoint unavailable or returned an invalid response.' });
   }
   return { schemaVersion: 1, checkedAt: new Date().toISOString(), network: options.network,
     readOnly: true, settlementVerified: false,
