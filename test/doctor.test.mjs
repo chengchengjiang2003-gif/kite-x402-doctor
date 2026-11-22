@@ -72,6 +72,10 @@ async function fixture(run, settings = {}) {
     let body = '';
     for await (const chunk of req) body += chunk;
     requests.push({ path: req.url, method: req.method, headers: req.headers, body });
+    if (settings.disconnect === req.url) {
+      req.socket.destroy();
+      return;
+    }
     if (settings.hang === req.url) return;
     if (req.url === '/rpc') {
       res.writeHead(settings.rpcStatus ?? 200, { 'Content-Type': 'application/json' });
@@ -120,18 +124,25 @@ for (const settings of [
     }, settings);
   });
 }
-for (const path of ['/rpc', '/paid']) {
-  test(`timeout at ${path}`, async () => {
-    await fixture(async options => {
-      assert.equal((await diagnose({ ...options, timeoutMs: 100 })).ok, false);
-    }, { hang: path });
-  });
+for (const [condition, setting] of [['timeout', 'hang'], ['connection closed', 'disconnect']]) {
+  for (const path of ['/rpc', '/paid']) {
+    test(`${condition} at ${path} does not hide the other check's result`, async () => {
+      await fixture(async (options, requests) => {
+        const report = await diagnose({ ...options, timeoutMs: 300 });
+        assert.equal(report.ok, false);
+        assert.deepEqual(requests.map(request => request.path), ['/rpc', '/paid']);
+        const failures = report.checks.filter(check => check.status === 'fail');
+        assert.deepEqual(failures.map(check => check.id), [path === '/rpc' ? 'rpc.chain' : 'http.status']);
+        const challengeChecks = report.checks.filter(check => check.id.startsWith('challenge.'));
+        if (path === '/rpc') {
+          assert.ok(challengeChecks.length > 0, 'the valid endpoint challenge was still observed');
+        } else {
+          assert.deepEqual(challengeChecks, [], 'a failed HTTP request produced no challenge evidence');
+        }
+      }, { [setting]: path });
+    });
+  }
 }
-test('connection failures produce failed observations', async () => {
-  const report = await diagnose({ url: 'http://127.0.0.1:1', rpc: 'http://127.0.0.1:1', network: 'testnet' });
-  assert.equal(report.ok, false);
-  assert.equal(report.checks.length, 2);
-});
 
 async function runCli(args) {
   try { return { ...(await exec(process.execPath, [cli, ...args])), code: 0 }; }
