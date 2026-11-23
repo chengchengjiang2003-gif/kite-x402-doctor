@@ -14,6 +14,15 @@ Check IDs include `rpc.chain`, `http.status`, and `challenge.header`, `version`,
 
 Invalid arguments in JSON mode produce `{ "error": "invalid_arguments", "message": "..." }` and exit 2. Diagnostics produce the complete report and exit 0 or 1. An unexpected internal failure exits 1 with a generic stderr message.
 
+## Troubleshoot request timeouts
+
+In a JSON report, look for a failed check with `code: "request_timeout"` and use its `id` to decide what to inspect:
+
+- `rpc.chain`: check connectivity to the configured RPC and verify that `--rpc`, if set, points to a responsive provider for the selected Kite network.
+- `http.status`: check connectivity to `--url` and whether the endpoint can return its unpaid response within eight seconds. Challenge checks require a response and are omitted if this request times out.
+
+Both requests are checked independently. Inspect both results before changing the RPC or endpoint URL. A response other than HTTP 402 is a status failure and has no timeout code.
+
 ## Library
 
 ```js
