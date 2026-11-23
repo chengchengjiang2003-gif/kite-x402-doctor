@@ -23,6 +23,8 @@ In a JSON report, look for a failed check with `code: "request_timeout"` and use
 
 Both requests are checked independently. Inspect both results before changing the RPC or endpoint URL. A response other than HTTP 402 is a status failure and has no timeout code.
 
+For `rpc.chain`, `rpc_chain_mismatch` means the provider answered with a valid chain ID for a different network. Verify the selected network and the RPC URL. `rpc_invalid_response` means the response could not establish the chain ID. Check that the URL points to the JSON-RPC endpoint and that it returns a valid `eth_chainId` response for the same request ID. HTTP errors display their status, and connection failures remain reported as unavailable.
+
 ## Library
 
 ```js

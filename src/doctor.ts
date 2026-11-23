@@ -7,7 +7,7 @@ export const NETWORKS = Object.freeze({
     rpc: 'https://rpc.gokite.ai', asset: '0x7aB6f3ed87C42eF0aDb67Ed95090f8bF5240149e' }),
 });
 
-export interface Check { id: string; status: 'pass' | 'fail'; detail: string; code?: 'request_timeout' }
+export interface Check { id: string; status: 'pass' | 'fail'; detail: string; code?: 'request_timeout' | 'rpc_chain_mismatch' | 'rpc_invalid_response' }
 export interface Report {
   schemaVersion: 1;
   checkedAt: string;
@@ -88,7 +88,7 @@ export function inspectChallenge(header: string | null, network: Network): Check
 }
 
 async function readRpcJson(response: Response): Promise<unknown> {
-  if (!response.body) throw new Error();
+  if (!response.body) return undefined;
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let length = 0;
@@ -97,10 +97,11 @@ async function readRpcJson(response: Response): Promise<unknown> {
       const { value, done } = await reader.read();
       if (done) break;
       length += value.byteLength;
-      if (length > 65536) throw new Error();
+      if (length > 65536) return undefined;
       chunks.push(value);
     }
-    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    try { return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks))); }
+    catch { return undefined; }
   } finally { await reader.cancel().catch(() => {}); }
 }
 
@@ -119,16 +120,26 @@ export async function diagnose(options: Options): Promise<Report> {
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_chainId', params: [] }),
     });
-    const data = await readRpcJson(response);
-    const correct = response.ok && record(data) && data.jsonrpc === '2.0' && data.id === 1 &&
-      !Object.hasOwn(data, 'error') && typeof data.result === 'string' && /^0x[0-9a-fA-F]+$/.test(data.result) &&
-      BigInt(data.result) === BigInt(config.chainId);
-    checks.push({ id: 'rpc.chain', status: correct ? 'pass' : 'fail',
-      detail: `Expected JSON-RPC eth_chainId ${config.chainId} with matching response id.` });
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => {});
+      checks.push({ id: 'rpc.chain', status: 'fail', detail: `RPC returned HTTP ${response.status}.` });
+    } else {
+      const data = await readRpcJson(response);
+      if (!record(data) || data.jsonrpc !== '2.0' || data.id !== 1 || Object.hasOwn(data, 'error') ||
+          typeof data.result !== 'string' || !/^0x[0-9a-fA-F]+$/.test(data.result)) {
+        checks.push({ id: 'rpc.chain', status: 'fail', code: 'rpc_invalid_response',
+          detail: 'RPC did not return a usable eth_chainId response.' });
+      } else if (BigInt(data.result) !== BigInt(config.chainId)) {
+        checks.push({ id: 'rpc.chain', status: 'fail', code: 'rpc_chain_mismatch',
+          detail: `RPC reported a different chain ID. Expected ${config.chainId}.` });
+      } else {
+        checks.push({ id: 'rpc.chain', status: 'pass', detail: `RPC confirmed chain ID ${config.chainId}.` });
+      }
+    }
   } catch {
     checks.push(rpcTimeout.aborted
       ? { id: 'rpc.chain', status: 'fail', detail: 'RPC request timed out.', code: 'request_timeout' }
-      : { id: 'rpc.chain', status: 'fail', detail: 'RPC unavailable or returned invalid/oversized JSON.' });
+      : { id: 'rpc.chain', status: 'fail', detail: 'RPC unavailable.' });
   }
   const httpTimeout = AbortSignal.timeout(timeout);
   try {
