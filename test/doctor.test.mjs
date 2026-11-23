@@ -203,3 +203,28 @@ test('a non-402 endpoint response has no timeout code', async () => {
     assert.ok(report.checks.every(check => !Object.hasOwn(check, 'code')));
   }, { status: 200 });
 });
+
+for (const [name, settings, code] of [
+  ['correct chain', {}, undefined],
+  ['wrong chain', { rpc: { jsonrpc: '2.0', id: 1, result: '0x1' } }, 'rpc_chain_mismatch'],
+  ['wrong ID', { rpc: { jsonrpc: '2.0', id: 2, result: '0x940' } }, 'rpc_invalid_response'],
+  ['wrong version', { rpc: { jsonrpc: '1.0', id: 1, result: '0x940' } }, 'rpc_invalid_response'],
+  ['JSON-RPC error', { rpc: { jsonrpc: '2.0', id: 1, error: { code: -32601 } } }, 'rpc_invalid_response'],
+  ['invalid JSON', { rpcRaw: '<html>' }, 'rpc_invalid_response'],
+  ['oversized JSON', { rpcRaw: ' '.repeat(65537) }, 'rpc_invalid_response'],
+  ['HTTP error', { rpcStatus: 500 }, undefined],
+  ['disconnected', { disconnect: '/rpc' }, undefined],
+]) {
+  test(`RPC classification: ${name}`, async () => {
+    await fixture(async (options, requests) => {
+      const report = await diagnose(options);
+      const rpc = report.checks.find(check => check.id === 'rpc.chain');
+      assert.equal(rpc?.status, name === 'correct chain' ? 'pass' : 'fail');
+      assert.equal(rpc?.code, code);
+      if (name === 'HTTP error') assert.match(rpc.detail, /HTTP 500/);
+      if (name === 'disconnected') assert.match(rpc.detail, /unavailable/);
+      assert.equal(report.checks.find(check => check.id === 'http.status')?.status, 'pass');
+      assert.deepEqual(requests.map(request => request.path), ['/rpc', '/paid']);
+    }, settings);
+  });
+}
