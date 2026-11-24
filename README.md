@@ -22,7 +22,7 @@ node dist/cli.js check --url https://YOUR-SERVICE/v1/endpoint --network testnet 
 
 Replace the placeholder with a GET endpoint you operate or are authorized to inspect. Use `--rpc https://YOUR-RPC` to override the selected network's default RPC. Omit `--json` for a readable report. The CLI does not automatically load `.env` files.
 
-Each run makes one `eth_chainId` JSON-RPC request and one unpaid GET. It follows no redirects and performs no retries. Each request has an eight-second timeout. RPC JSON is limited to 64 KiB; the encoded challenge header is limited to 16 KiB, subject to the HTTP client's own header limit. The paid endpoint's response body is discarded.
+Each run makes one `eth_chainId` JSON-RPC request and one unpaid GET. It follows no redirects and performs no retries. Each request has an eight-second timeout by default. Use `--timeout-ms <ms>` to set a per-request limit between 1 and 60000 milliseconds. RPC JSON is limited to 64 KiB; the encoded challenge header is limited to 16 KiB, subject to the HTTP client's own header limit. The paid endpoint's response body is discarded.
 
 In JSON output, a timed-out check has `code: "request_timeout"`. Its `id` identifies whether the RPC request (`rpc.chain`) or the endpoint request (`http.status`) timed out. Other checks omit `code`.
 

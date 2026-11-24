@@ -2,9 +2,10 @@
 import { parseArgs } from 'node:util';
 import { diagnose, formatReport, validateHttpUrl, type Network } from './doctor.js';
 
-const help = `Usage: kite-x402-doctor check --url <endpoint> --network testnet|mainnet [--rpc <url>] [--json]
+const help = `Usage: kite-x402-doctor check --url <endpoint> --network testnet|mainnet [--rpc <url>] [--timeout-ms <ms>] [--json]
 Read-only diagnostics: one eth_chainId RPC and one unpaid GET. No signing or payments.
 Exit codes: 0 checks passed; 1 diagnostic failure; 2 invalid arguments.
+Set --timeout-ms to 1–60000 milliseconds per request (default: 8000).
 Use a GET endpoint that returns an x402 v2 PAYMENT-REQUIRED challenge.
 `;
 
@@ -14,17 +15,22 @@ async function main(): Promise<void> {
   try {
     const { values, positionals } = parseArgs({
       options: { url: { type: 'string' }, network: { type: 'string' },
-        rpc: { type: 'string' }, json: { type: 'boolean' }, help: { type: 'boolean', short: 'h' } },
+        rpc: { type: 'string' }, 'timeout-ms': { type: 'string' }, json: { type: 'boolean' }, help: { type: 'boolean', short: 'h' } },
       allowPositionals: true, strict: true,
     });
     json = values.json === true;
     if (values.help) { process.stdout.write(help); return; }
     if (positionals.length !== 1 || positionals[0] !== 'check' || !values.url ||
       (values.network !== 'testnet' && values.network !== 'mainnet')) throw new Error();
+    const rawTimeout = values['timeout-ms'];
+    const timeoutMs = rawTimeout === undefined ? undefined : Number(rawTimeout);
+    if (rawTimeout !== undefined && (!/^[0-9]+$/.test(rawTimeout) ||
+      timeoutMs === undefined || timeoutMs < 1 || timeoutMs > 60000)) throw new Error();
     options = { url: validateHttpUrl(values.url), network: values.network as Network,
+      ...(timeoutMs !== undefined ? { timeoutMs } : {}),
       ...(values.rpc !== undefined ? { rpc: validateHttpUrl(values.rpc) } : {}) };
   } catch {
-    const error = { error: 'invalid_arguments', message: 'Use check with --url and --network testnet|mainnet; see --help.' };
+    const error = { error: 'invalid_arguments', message: 'Use check with --url and --network testnet|mainnet and an optional --timeout-ms (1–60000). See --help.' };
     if (process.argv.includes('--json')) process.stdout.write(JSON.stringify(error) + '\n');
     else process.stderr.write(error.message + '\n');
     process.exitCode = 2;

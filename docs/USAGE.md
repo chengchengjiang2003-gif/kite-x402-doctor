@@ -1,7 +1,7 @@
 # CLI and library usage
 
 ```text
-kite-x402-doctor check --url <endpoint> --network testnet|mainnet [--rpc <url>] [--json]
+kite-x402-doctor check --url <endpoint> --network testnet|mainnet [--rpc <url>] [--timeout-ms <ms>] [--json]
 ```
 
 `--url` and `--network` are required. `--rpc` overrides the network default. `--json` writes the report to stdout; the human format does the same without that flag. `--help` works without a URL and exits successfully. Unknown options, unsupported networks and invalid URLs exit 2. URLs must be HTTP(S), without embedded user/password credentials or a fragment.
@@ -19,7 +19,7 @@ Invalid arguments in JSON mode produce `{ "error": "invalid_arguments", "message
 In a JSON report, look for a failed check with `code: "request_timeout"` and use its `id` to decide what to inspect:
 
 - `rpc.chain`: check connectivity to the configured RPC and verify that `--rpc`, if set, points to a responsive provider for the selected Kite network.
-- `http.status`: check connectivity to `--url` and whether the endpoint can return its unpaid response within eight seconds. Challenge checks require a response and are omitted if this request times out.
+- `http.status`: check connectivity to `--url` and whether the endpoint can return its unpaid response within the configured timeout (eight seconds by default). Challenge checks require a response and are omitted if this request times out.
 
 Both requests are checked independently. Inspect both results before changing the RPC or endpoint URL. A response other than HTTP 402 is a status failure and has no timeout code.
 
@@ -36,6 +36,6 @@ const report = await diagnose({
 console.log(formatReport(report));
 ```
 
-`diagnose(options)` returns a `Promise<Report>`. Invalid library options reject before requests. The optional library-only `timeoutMs` accepts integers from 1 through 60000, defaulting to 8000. `inspectChallenge(header, network)` performs offline inspection and returns `Check[]`; use only the two declared networks. Types are included in the tarball.
+`diagnose(options)` returns a `Promise<Report>`. Invalid library options reject before requests. The optional `timeoutMs` accepts integers from 1 through 60000, defaulting to 8000. `inspectChallenge(header, network)` performs offline inspection and returns `Check[]`; use only the two declared networks. Types are included in the tarball.
 
 The operator must compare the advertised recipient to their intended service recipient separately. A valid address is not an identity or ownership check. Service errors, funded-call behavior and on-chain transfer effects require separate evidence.

@@ -203,3 +203,26 @@ test('a non-402 endpoint response has no timeout code', async () => {
     assert.ok(report.checks.every(check => !Object.hasOwn(check, 'code')));
   }, { status: 200 });
 });
+
+test('CLI honors the requested timeout while still checking the endpoint', async () => {
+  await fixture(async (options, requests) => {
+    const result = await runCli(['check', '--url', options.url, '--rpc', options.rpc,
+      '--network', 'testnet', '--timeout-ms', '300', '--json']);
+    assert.equal(result.code, 1, result.stderr);
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.checks.find(check => check.id === 'rpc.chain')?.code, 'request_timeout');
+    assert.equal(report.checks.find(check => check.id === 'http.status')?.status, 'pass');
+    assert.deepEqual(requests.map(request => request.path), ['/rpc', '/paid']);
+  }, { hang: '/rpc' });
+});
+for (const invalid of ['', '0', '60001', '1.5', '2e3']) {
+  test(`CLI rejects invalid timeout ${JSON.stringify(invalid)}`, async () => {
+    await fixture(async (options, requests) => {
+      const result = await runCli(['check', '--url', options.url, '--rpc', options.rpc,
+        '--network', 'testnet', '--timeout-ms', invalid, '--json']);
+      assert.equal(result.code, 2);
+      assert.equal(JSON.parse(result.stdout).error, 'invalid_arguments');
+      assert.deepEqual(requests, []);
+    });
+  });
+}
